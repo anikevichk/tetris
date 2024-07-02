@@ -6,7 +6,7 @@
 
 int main() {
     int screenWidth = 1000;
-    int screenHeight = 800;
+    int screenHeight = 900;
 
     // Calculate optimal cell size based on screen dimensions and desired grid size
     int cellSize = sqrt((screenWidth * screenHeight) / (ROWS * COLS * 2.77)); // Size of each square
