@@ -1,10 +1,28 @@
 #include "raylib.h"
 #include <math.h>
+#include <ctime>
 
-#define ROWS 5
-#define COLS 5
+#define ROWS 20
+#define COLS 10
+
+typedef struct Tetromino {
+    int shape[4][4]; // 4x4 grid to define the shape of the tetromino
+    int x, y; // Position of the tetromino
+};
+
+// Define tetromino shapes for O and T
+Tetromino tetrominos[] = {
+        {{{1, 1, 0, 0}, {1, 1, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}}, 0, 0}, // O
+        {{{1, 1, 1, 0}, {0, 1, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}}, 0, 0},  // T
+        {{{1, 1, 1, 0}, {0, 0, 1, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}}, 0, 0}, // г
+        {{{1, 1, 1, 0}, {1, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}}, 0, 0}, // г
+        {{{1, 1, 0, 0}, {0, 1, 1, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}}, 0, 0}, // z
+        {{{0, 1, 1, 0}, {1, 1, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}}, 0, 0}, // z
+        {{{1, 1, 1, 1}, {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}}, 0, 0} // -
+};
 
 void CheckAndRemoveFullRows(bool grid[ROWS][COLS]) {
+    // Check each row for fullness and remove if full
     for (int i = 0; i < ROWS; i++) {
         bool fullRow = true;
         for (int j = 0; j < COLS; j++) {
@@ -14,14 +32,73 @@ void CheckAndRemoveFullRows(bool grid[ROWS][COLS]) {
             }
         }
         if (fullRow) {
-            // Remove row and move all rows up down
+            // Move all rows above down by one row
             for (int k = i; k > 0; k--) {
                 for (int j = 0; j < COLS; j++) {
                     grid[k][j] = grid[k - 1][j];
                 }
             }
+            // Clear the topmost row
+            for (int j = 0; j < COLS; j++) {
+                grid[0][j] = false;
+            }
         }
     }
+}
+
+bool CheckCollision(Tetromino t, bool grid[ROWS][COLS]) {
+    // Check collision of tetromino with grid boundaries and existing blocks
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 4; j++) {
+            if (t.shape[i][j]) {
+                int newX = t.x + j;
+                int newY = t.y + i;
+                // Check boundaries and collisions with existing blocks
+                if (newX < 0 || newX >= COLS || newY >= ROWS || (newY >= 0 && grid[newY][newX])) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+void PlaceTetromino(Tetromino t, bool grid[ROWS][COLS]) {
+    // Place tetromino onto the grid
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 4; j++) {
+            if (t.shape[i][j]) {
+                grid[t.y + i][t.x + j] = true;
+            }
+        }
+    }
+}
+
+void Rotate(Tetromino *t) {
+    int rotatedShape[4][4] = {0};
+
+    // transfer the current shape to a temporary matrix, taking into account the size
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 4; j++) {
+            rotatedShape[j][3 - i] = t->shape[i][j];
+        }
+    }
+
+    // transfer the rotated shape back to the main matrix
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 4; j++) {
+            t->shape[i][j] = rotatedShape[i][j];
+        }
+    }
+}
+
+Tetromino GetRandomTetromino() {
+    // Get a random tetromino (O or T)
+    int index = GetRandomValue(0, 6);
+    Tetromino t = tetrominos[index];
+    t.x = COLS / 2 - 2; // Initial position to start at the center
+    t.y = 0;            // Start at the top of the grid
+    return t;
 }
 
 int main() {
@@ -29,7 +106,7 @@ int main() {
     int screenHeight = 900;
 
     // Calculate optimal cell size based on screen dimensions and desired grid size
-    int cellSize = sqrt((screenWidth * screenHeight) / (ROWS * COLS * 2.77)); // Size of each square
+    int cellSize = sqrt((screenWidth * screenHeight) / (ROWS * COLS * 2.77));
 
     // Calculate grid dimensions based on cell size and number of rows/columns
     int gridWidth = COLS * cellSize;
@@ -56,77 +133,97 @@ int main() {
     // Grid to track occupied cells
     bool grid[ROWS][COLS] = { false };
 
-    // Falling square variables
-    int fallingSquareX = startX + (COLS / 2) * cellSize; // Start in the middle of the grid
-    int fallingSquareY = startY; // Start at the top of the screen
-    int usualSpeed = 3;
-    int superSpeed = 9;
-    int fallingSpeed = usualSpeed;
+    srand(time(NULL)); // Seed random number generator
+
+    // Initialize the first tetromino
+    Tetromino currentTetromino = GetRandomTetromino();
+
+    // Falling speed variables and intervals
+    float timeSinceLastFall = 0.0f;
+    float superInterval = 0.05f; // Interval for super speed falling
+    float usualInterval = 0.15f; // Interval for usual speed falling
+    float fallInterval = usualInterval; // Current falling interval
 
     // Main game loop
     while (!WindowShouldClose()) {
-        // Update falling square position
-        fallingSquareY += fallingSpeed;
+        float deltaTime = GetFrameTime();
+        timeSinceLastFall += deltaTime;
+
+        // Handle input and update tetromino position
+        Tetromino nextPosition = currentTetromino;
 
         if (IsKeyPressed(KEY_A) || IsKeyPressed(KEY_LEFT)) {
-            fallingSquareX -= cellSize;
+            nextPosition.x--;
+            if (CheckCollision(nextPosition, grid)) {
+                nextPosition.x++;
+            }
         }
-
         if (IsKeyPressed(KEY_D) || IsKeyPressed(KEY_RIGHT)) {
-            fallingSquareX += cellSize;
+            nextPosition.x++;
+            if (CheckCollision(nextPosition, grid)) {
+                nextPosition.x--;
+            }
         }
-
         if (IsKeyDown(KEY_S) || IsKeyPressed(KEY_DOWN)) {
-            fallingSpeed = superSpeed;
+            fallInterval = superInterval; // Increase falling speed
         } else {
-            fallingSpeed = usualSpeed;
+            fallInterval = usualInterval; // Reset to normal falling speed
         }
 
-        if (fallingSquareX < startX) {
-            fallingSquareX = startX;
+        if (IsKeyPressed(KEY_W) || IsKeyPressed(KEY_UP)) {
+            Rotate(&nextPosition);
+            if (CheckCollision(nextPosition, grid)) {
+                // Восстановление оригинальной позиции, если поворот вызывает коллизию
+                nextPosition = currentTetromino; // Вернуть оригинальную позицию
+            }
         }
 
-        if (fallingSquareX > startX + (COLS - 1) * cellSize) {
-            fallingSquareX = startX + (COLS - 1) * cellSize;
+        // Update falling position based on elapsed time and interval
+        if (timeSinceLastFall >= fallInterval) {
+            nextPosition.y++;
+            timeSinceLastFall = 0.0f; // Reset time since last fall
         }
 
-        // Check if the square has landed
-        int gridX = (fallingSquareX - startX) / cellSize;
-        int gridY = (fallingSquareY - startY) / cellSize;
-
-        bool landed = false;
-        if (gridY >= ROWS - 1 || grid[gridY + 1][gridX]) {
-            landed = true;
-        }
-
-        // If landed, mark the cell as occupied and reset the square to the top
+        // Check collision and update tetromino position or place if landed
+        bool landed = CheckCollision(nextPosition, grid);
         if (landed) {
-            grid[gridY][gridX] = true;
-            CheckAndRemoveFullRows(grid); // Проверить и удалить заполненные ряды
-            fallingSquareX = startX + (COLS / 2) * cellSize;
-            fallingSquareY = startY;
+            PlaceTetromino(currentTetromino, grid);
+            CheckAndRemoveFullRows(grid);
+            currentTetromino = GetRandomTetromino();
+            if (CheckCollision(currentTetromino, grid)) {
+                break; // Game over if new tetromino collides immediately
+            }
+        } else {
+            currentTetromino = nextPosition;
         }
 
+        // Render the game
         BeginDrawing();
-        ClearBackground(BLUE); // Clear the screen with a blue color
+        ClearBackground(BLUE); // Clear the screen with blue color
 
-        // Draw grid of cells
+        // Draw grid cells
         for (int i = 0; i < ROWS; i++) {
             for (int j = 0; j < COLS; j++) {
-                // Calculate coordinates for each cell in the grid
                 int x = startX + j * cellSize;
                 int y = startY + i * cellSize;
-                // Draw each cell as a square with a light gray color
                 if (grid[i][j]) {
-                    DrawRectangle(x, y, cellSize - 1, cellSize - 1, GRAY); // -1 for gap between cells
+                    DrawRectangle(x, y, cellSize - 1, cellSize - 1, GRAY); // Draw occupied cell
                 } else {
-                    DrawRectangle(x, y, cellSize - 1, cellSize - 1, LIGHTGRAY); // -1 for gap between cells
+                    DrawRectangle(x, y, cellSize - 1, cellSize - 1, LIGHTGRAY); // Draw empty cell
                 }
             }
         }
 
-        // Draw the falling square
-        DrawRectangle(fallingSquareX, fallingSquareY, cellSize, cellSize, RED);
+        // Draw the falling tetromino
+        for (int i = 0; i < 4; i++) {
+            for (int j = 0; j < 4; j++) {
+                if (currentTetromino.shape[i][j]) {
+                    int x = startX + (currentTetromino.x + j) * cellSize;
+                    int y = startY + (currentTetromino.y + i) * cellSize;
+                    DrawRectangle(x, y, cellSize - 1, cellSize - 1, RED); // Draw tetromino cell
+                }
+            }
+        }
 
         EndDrawing();
     }
